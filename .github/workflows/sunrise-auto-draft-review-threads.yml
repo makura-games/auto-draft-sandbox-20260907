@@ -26,12 +26,6 @@ permissions:
   statuses: read
   pull-requests: read
 
-concurrency:
-  # ponytail: общая очередь исключает гонки между обходом всех ПР и отдельными событиями.
-  group: ${{ github.workflow }}
-  cancel-in-progress: false
-  queue: max
-
 jobs:
   sync-draft-state:
     if: >-
@@ -40,6 +34,11 @@ jobs:
       ((github.event.sender.type == 'Bot' && github.event.sender.login == 'coderabbitai[bot]') ||
       (github.event.action != 'created' && github.event.comment.user.type == 'Bot' &&
       github.event.sender.login != github.event.comment.user.login)))
+    concurrency:
+      # ponytail: общая очередь исключает гонки; пропущенные задания в неё не попадают.
+      group: ${{ github.workflow }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     env:
       AUTO_DRAFT_LABEL: "auto-draft: unresolved review"
