@@ -2,7 +2,6 @@
 module.exports = async ({ github, owner, repo, pullRequest, rulesCache }) => {
   const checks = [];
   let cursor = null;
-  let classicRequirements;
   do {
     const result = await github.graphql(
       `query Readiness($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
@@ -10,7 +9,6 @@ module.exports = async ({ github, owner, repo, pullRequest, rulesCache }) => {
           pullRequest(number: $number) {
             headRefOid
             baseRefName
-            baseRef { branchProtectionRule { requiredStatusChecks { context app { databaseId } } } }
             commits(last: 1) {
               nodes { commit { statusCheckRollup {
                 contexts(first: 100, after: $cursor) {
@@ -39,7 +37,6 @@ module.exports = async ({ github, owner, repo, pullRequest, rulesCache }) => {
     const current = result.repository.pullRequest;
     if (!current || current.headRefOid !== pullRequest.headRefOid || current.baseRefName !== pullRequest.baseRefName)
       throw new Error('ПР изменился во время чтения проверок; требуется повторная синхронизация.');
-    classicRequirements = current.baseRef?.branchProtectionRule?.requiredStatusChecks || [];
     const connection = current.commits.nodes[0]?.commit.statusCheckRollup?.contexts;
     checks.push(...(connection?.nodes || []));
     cursor = connection?.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
@@ -98,7 +95,15 @@ module.exports = async ({ github, owner, repo, pullRequest, rulesCache }) => {
     });
     rulesCache.set(pullRequest.baseRefName, rules);
   }
-  const requirements = classicRequirements.map(check => ({ context: check.context, integration_id: check.app?.databaseId }));
+  // Сводка защиты ветки доступна с Contents: read; поле GraphQL требует прав администратора.
+  const classicKey = `classic:${pullRequest.baseRefName}`;
+  if (!rulesCache.has(classicKey)) {
+    const { data: branch } = await github.rest.repos.getBranch({ owner, repo, branch: pullRequest.baseRefName });
+    const required = branch.protection?.required_status_checks;
+    rulesCache.set(classicKey, branch.protection?.enabled === false || required?.enforcement_level === 'off'
+      ? [] : (required?.checks || required?.contexts?.map(context => ({ context })) || []));
+  }
+  const requirements = rulesCache.get(classicKey).map(check => ({ context: check.context, integration_id: check.app_id }));
   const workflows = [];
   for (const rule of rulesCache.get(pullRequest.baseRefName)) {
     if (rule.type === 'required_status_checks')
