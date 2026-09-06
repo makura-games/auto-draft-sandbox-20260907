@@ -142,13 +142,28 @@ module.exports = async ({ github, owner, repo, pullRequest, rulesCache, now = Da
     if (checks.some(previous => checkKey(previous) === checkKey(check) && succeeded(previous)))
       continue;
     const currentRun = check.checkSuite.workflowRun;
-    if (!currentRun?.databaseId || !(await loadRuns()).some(run =>
+    const history = currentRun?.databaseId ? await loadRuns() : [];
+    if (history.some(run =>
       run.head_sha === pullRequest.headRefOid && run.id < currentRun.databaseId &&
       run.workflow_id === currentRun.workflow.databaseId && run.status === 'completed' && run.conclusion === 'success' &&
-      run.pull_requests?.some(pr => pr.number === pullRequest.number))) {
-      keepReadyDuringRerun = false;
-      break;
+      run.pull_requests?.some(pr => pr.number === pullRequest.number)))
+      continue;
+    // Кнопка Re-run сохраняет ID запуска, но увеличивает номер попытки.
+    const rerun = history.find(run => run.id === currentRun?.databaseId && run.run_attempt > 1);
+    if (rerun) {
+      const attemptKey = `attempt:${rerun.id}:${rerun.run_attempt - 1}`;
+      if (!rulesCache.has(attemptKey)) {
+        const { data: attempt } = await github.rest.actions.getWorkflowRunAttempt({
+          owner, repo, run_id: rerun.id, attempt_number: rerun.run_attempt - 1,
+        });
+        rulesCache.set(attemptKey, attempt);
+      }
+      const attempt = rulesCache.get(attemptKey);
+      if (attempt.head_sha === pullRequest.headRefOid && attempt.status === 'completed' && attempt.conclusion === 'success')
+        continue;
     }
+    keepReadyDuringRerun = false;
+    break;
   }
   if (workflows.length > 0) {
     await loadRuns();
