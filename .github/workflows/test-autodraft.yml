@@ -1,0 +1,12 @@
+name: "Sandbox: Auto Draft Regression"
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  regression:
+    name: Проверка сценариев автодрафта
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Проверить политику, события, метки и отчёты
+        run: python3 Tools/_sunrise/ci/test_auto_draft_review_threads.py
