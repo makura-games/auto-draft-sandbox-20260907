@@ -1,0 +1,24 @@
+name: Sandbox permission diagnostics
+on: workflow_dispatch
+permissions:
+  actions: read
+  contents: read
+  checks: read
+  statuses: read
+  pull-requests: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const queries = [
+              'baseRef { branchProtectionRule { requiredStatusChecks { context app { databaseId } } } }',
+              'commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ... on StatusContext{context creator{login __typename} isRequired(pullRequestNumber:1)} ... on CheckRun{name isRequired(pullRequestNumber:1) checkSuite{app{slug} workflowRun{workflow{databaseId}}}}}}}}}}',
+            ];
+            for (const fields of queries) {
+              try {
+                console.log(JSON.stringify(await github.graphql(`query {repository(owner:"makura-games",name:"auto-draft-sandbox-20260907"){pullRequest(number:1){${fields}}}}`)));
+              } catch(error) { console.log(JSON.stringify(error.errors)); }
+            }
