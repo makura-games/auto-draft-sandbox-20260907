@@ -255,15 +255,6 @@ module.exports = async ({ github, readGithub = github, context, core }) => {
       `pendingChecks=${readiness.pendingChecks.join(', ')}.`,
     );
 
-    if (action === 'draft' || action === 'ready') {
-      const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: number });
-      if (current.head.sha !== pullRequest.headRefOid || current.base.ref !== pullRequest.baseRefName ||
-          current.draft !== pullRequest.isDraft) {
-        core.info(`#${number}: состояние ПР изменилось во время проверки, откладываю синхронизацию.`);
-        return;
-      }
-    }
-
     const feedback = blockingReviews.map(review => {
       const threads = threadsByReview.get(review.id) || [];
       return {
@@ -277,6 +268,15 @@ module.exports = async ({ github, readGithub = github, context, core }) => {
     // Сбой GitHub не доказывает неготовность ПР: обновляем пояснение, но не меняем черновик.
     if (readinessError)
       throw readinessError;
+
+    if (action === 'draft' || action === 'ready') {
+      const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+      if (current.head.sha !== pullRequest.headRefOid || current.base.ref !== pullRequest.baseRefName ||
+          current.draft !== pullRequest.isDraft || current.state !== 'open') {
+        core.info(`#${number}: состояние ПР изменилось во время проверки, откладываю синхронизацию.`);
+        return;
+      }
+    }
 
     if (action === "draft") {
       await addMarker(number);

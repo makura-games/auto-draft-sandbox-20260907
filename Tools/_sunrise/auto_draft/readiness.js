@@ -101,7 +101,7 @@ module.exports = async ({ github, owner, repo, pullRequest, rulesCache }) => {
     const { data: branch } = await github.rest.repos.getBranch({ owner, repo, branch: pullRequest.baseRefName });
     const required = branch.protection?.required_status_checks;
     rulesCache.set(classicKey, branch.protection?.enabled === false || required?.enforcement_level === 'off'
-      ? [] : (required?.checks || required?.contexts?.map(context => ({ context })) || []));
+      ? [] : (required?.checks?.length ? required.checks : required?.contexts?.map(context => ({ context })) || []));
   }
   const requirements = rulesCache.get(classicKey).map(check => ({ context: check.context, integration_id: check.app_id }));
   const workflows = [];
@@ -131,20 +131,21 @@ module.exports = async ({ github, owner, repo, pullRequest, rulesCache }) => {
         const { data: source } = await github.request('GET /repositories/{repository_id}', {
           repository_id: workflow.repository_id,
         });
-        rulesCache.set(sourceKey, source.full_name);
+        rulesCache.set(sourceKey, source);
       }
-      const sourcePath = `${rulesCache.get(sourceKey)}/${workflow.path}`;
+      const source = rulesCache.get(sourceKey);
+      const sourcePath = `${source.full_name}/${workflow.path}`;
+      const version = workflow.sha || workflow.ref || `refs/heads/${source.default_branch}`;
+      const versions = new Set([version, version.replace(/^refs\/(heads|tags)\//, '')]);
       const matching = runs.filter(run => {
         if (run.head_sha !== pullRequest.headRefOid ||
-            run.pull_requests?.length > 0 && !run.pull_requests.some(pr => pr.number === pullRequest.number))
+            !['pull_request', 'pull_request_target', 'merge_group'].includes(run.event) ||
+            !run.pull_requests?.some(pr => pr.number === pullRequest.number))
           return false;
-        const referenced = (run.referenced_workflows || []).some(reference =>
-          reference.path.split('@')[0] === sourcePath &&
-          (!workflow.sha || reference.sha === workflow.sha) &&
-          (!workflow.ref || reference.ref === workflow.ref || reference.path.endsWith(`@${workflow.ref}`)));
-        const own = run.repository?.id === workflow.repository_id && run.path?.split('@')[0] === workflow.path &&
-          !workflow.sha && (!workflow.ref || run.path.endsWith(`@${workflow.ref}`));
-        return referenced || own;
+        // Вызванная зависимость из referenced_workflows не доказывает запуск обязательного сценария.
+        const [path, ref] = (run.path || '').split('@');
+        return versions.has(ref) && (path === sourcePath ||
+          run.repository?.id === workflow.repository_id && path === workflow.path);
       }).sort((a, b) => b.id - a.id);
       const latestRun = matching[0];
       checkItems.push({ name: `Сценарий ${workflow.path}`,
