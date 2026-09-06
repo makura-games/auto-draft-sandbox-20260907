@@ -1,0 +1,13 @@
+name: Build & Test Debug
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+jobs:
+  required:
+    name: Sandbox required check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: node scenario.js
