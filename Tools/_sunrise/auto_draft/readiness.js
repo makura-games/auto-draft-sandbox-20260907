@@ -1,5 +1,6 @@
 // Проверки читаются штатным токеном Actions; приложению не нужны дополнительные права.
-module.exports = async ({ github, commentsGithub = github, owner, repo, pullRequest, rulesCache, now = Date.now() }) => {
+module.exports = async ({ github, commentsGithub = github, owner, repo, pullRequest, rulesCache,
+  reportAppSlug = 'github-actions', now = Date.now() }) => {
   const checks = [];
   let cursor = null;
   let createdAt;
@@ -197,7 +198,7 @@ module.exports = async ({ github, commentsGithub = github, owner, repo, pullRequ
   }
   return {
     comments,
-    reportCheck: checks.filter(check => check.checkSuite?.app?.slug === 'github-actions' &&
+    reportCheck: checks.filter(check => check.checkSuite?.app?.slug === reportAppSlug &&
       (check.externalId === `auto-draft:${pullRequest.number}` || check.externalId?.startsWith(`auto-draft:${pullRequest.number}:`)))
       .sort((a, b) => b.databaseId - a.databaseId).map(check => ({ id: check.databaseId, name: check.name,
         external_id: check.externalId, conclusion: check.conclusion?.toLowerCase() }))[0] || null,

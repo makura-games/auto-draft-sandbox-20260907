@@ -43,7 +43,7 @@ function buildReport({ number, feedback = [], readiness = {}, manualDraft, manua
   return { title, conclusion, summary: lines.filter(line => line !== undefined).join('\n') };
 }
 
-async function publishReport({ github, core, owner, repo, number, head, report, runId, existing }) {
+async function publishReport({ github, core, owner, repo, number, head, report, runId, existing, checkAppSlug = 'github-actions' }) {
   core.info(report.summary);
   if (core.summary)
     await core.summary.addRaw(report.summary + '\n\n').write();
@@ -53,7 +53,7 @@ async function publishReport({ github, core, owner, repo, number, head, report, 
   // В обычном пути проверка уже прочитана вместе с готовностью. Дополнительный запрос нужен лишь при сбое чтения.
   if (existing === undefined) {
     const checks = await github.paginate(github.rest.checks.listForRef, { owner, repo, ref: head, filter: 'all', per_page: 100 });
-    existing = checks.filter(check => (check.external_id === prefix || check.external_id?.startsWith(prefix + ':')) && check.app?.slug === 'github-actions')
+    existing = checks.filter(check => (check.external_id === prefix || check.external_id?.startsWith(prefix + ':')) && check.app?.slug === checkAppSlug)
       .sort((a, b) => b.id - a.id)[0];
   }
   const detailsUrl = runId ? `https://github.com/${owner}/${repo}/actions/runs/${runId}` : `https://github.com/${owner}/${repo}/pull/${number}`;

@@ -1,6 +1,6 @@
 module.exports = async ({ github, readGithub = github, context, core, config = require('./config.json') }) => {
   const loadReadiness = require('./readiness.js');
-  const { syncChecklist } = require('./checklist.js');
+  const { syncChecklist, plain } = require('./checklist.js');
   const { buildReport, publishReport } = require('./report.js');
   const owner = context.repo.owner;
   const repo = context.repo.repo;
@@ -13,6 +13,7 @@ module.exports = async ({ github, readGithub = github, context, core, config = r
   const markerLabel = label.name;
   const markerNames = [...new Set([markerLabel, ...label.previousNames])];
   const appSlug = process.env.AUTO_DRAFT_APP_SLUG;
+  const reportAppSlug = readGithub === github ? appSlug : 'github-actions';
   const rulesCache = new Map();
   let currentPullRequest;
   let currentReportCheck;
@@ -262,7 +263,7 @@ module.exports = async ({ github, readGithub = github, context, core, config = r
     let readinessError;
     core.info('Этап 2/4: проверяю обязательные тесты и ответ CodeRabbit.');
     try {
-      readiness = await loadReadiness({ github: readGithub, commentsGithub: github, owner, repo, pullRequest, rulesCache });
+      readiness = await loadReadiness({ github: readGithub, commentsGithub: github, owner, repo, pullRequest, rulesCache, reportAppSlug });
       currentReportCheck = readiness.reportCheck;
     } catch (error) {
       readinessError = error;
@@ -283,7 +284,7 @@ module.exports = async ({ github, readGithub = github, context, core, config = r
       `blocking=${blockingReviews.length}, approvals=${approvals.length}, ` +
       `threadsResolved=${allBlockingThreadsResolved}, checksReady=${readiness.checksReady}, ` +
       `codeRabbitReady=${readiness.codeRabbitReady}, rateLimited=${readiness.rateLimited || false}, ` +
-      `pendingChecks=${readiness.pendingChecks.join(', ')}.`,
+      `pendingChecks=${readiness.pendingChecks.map(plain).join(', ')}.`,
     );
 
     const feedback = blockingReviews.map(review => {
@@ -438,16 +439,22 @@ module.exports = async ({ github, readGithub = github, context, core, config = r
     try {
       const report = await syncPullRequest(number);
       await publishReport({ github: readGithub, core, owner, repo, number,
-        head: currentPullRequest?.state === 'OPEN' ? currentPullRequest.headRefOid : null, report, runId: context.runId, existing: currentReportCheck });
+        head: currentPullRequest?.state === 'OPEN' ? currentPullRequest.headRefOid : null, report, runId: context.runId, existing: currentReportCheck, checkAppSlug: reportAppSlug });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failures.push(`#${number}: ${message}`);
       core.error(`#${number}: ${message}`);
+      const rateLimited = error.status === 429 || error.response?.headers?.['x-ratelimit-remaining'] === '0' ||
+        error.status === 403 && /rate.?limit|secondary.*limit/i.test(message);
       try {
-        await publishReport({ github: readGithub, core, owner, repo, number, head: currentPullRequest?.headRefOid,
-          report: buildReport({ number, error }), runId: context.runId, existing: currentReportCheck });
+        await publishReport({ github: readGithub, core, owner, repo, number, head: rateLimited ? null : currentPullRequest?.headRefOid,
+          report: buildReport({ number, error }), runId: context.runId, existing: currentReportCheck, checkAppSlug: reportAppSlug });
       } catch (reportError) {
         core.error(`Не удалось опубликовать результат ПР ${number}: ${reportError.message}`);
+      }
+      if (rateLimited) {
+        core.warning('GitHub ограничил запросы. Обход остановлен без повторных запросов; оставшиеся ПР не получили подтверждение готовности. Повтори запуск после восстановления лимита.');
+        break;
       }
     } finally {
       core.endGroup?.();
