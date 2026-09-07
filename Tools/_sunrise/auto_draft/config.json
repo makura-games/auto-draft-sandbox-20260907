@@ -1,8 +1,8 @@
 {
   "label": {
-    "name": "auto-draft: unresolved review",
-    "color": "fbca04",
+    "name": "autodraft: test label",
+    "color": "7057ff",
     "description": "Автоматический черновик: ожидаются исправления или обязательные проверки.",
-    "previousNames": []
+    "previousNames": ["auto-draft: unresolved review"]
   }
 }
