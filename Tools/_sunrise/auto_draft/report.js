@@ -6,8 +6,8 @@ function buildReport({ number, feedback = [], readiness = {}, manualDraft, manua
     SUCCESS: 'успешно', FAILURE: 'ошибка', ERROR: 'ошибка', CANCELLED: 'отменена', TIMED_OUT: 'истекло время',
     SKIPPED: 'пропущена по условию', NEUTRAL: 'нейтральный результат', ACTION_REQUIRED: 'нужно действие человека' };
   const unresolved = feedback.filter(item => !item.done);
-  const failed = (readiness.checkItems || []).some(item => !item.done &&
-    ['FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE'].includes(item.result));
+  const failedItem = item => !item.done && ['FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE'].includes(item.result);
+  const failed = (readiness.checkItems || []).some(failedItem);
   let reason = 'всё готово';
   if (error) reason = 'ошибка синхронизации';
   else if (skipped) reason = 'повторная проверка позже';
@@ -22,14 +22,14 @@ function buildReport({ number, feedback = [], readiness = {}, manualDraft, manua
   const lines = [`## ${error ? '❌' : conclusion === 'success' ? '✅' : 'ℹ️'} ПР ${number}: ${reason}`, ''];
   if (error) {
     lines.push(`Не удалось завершить синхронизацию: ${plain(error.message || error)}`, '',
-      'Проверь сообщение об ошибке и последний этап в журнале. При отказе в доступе проверь права приложения и токена Actions; при недоступности GitHub повтори запуск. Успешная готовность не подтверждена.');
+      'Проверь сообщение об ошибке и последний этап в журнале. При отказе в доступе проверь права приложения и подтверждение его установки; при недоступности GitHub повтори запуск. Успешная готовность не подтверждена.');
   } else if (skipped) {
     lines.push(plain(skipped));
   } else {
     lines.push(`- ${unresolved.length ? '⏳ Остались требования исправлений' : '✅ Открытых требований исправлений нет'}.`,
       ...unresolved.map(item => `  - ${plain(item.text)}`),
       `- ${readiness.checksReady ? '✅ Обязательные проверки пройдены' : '⏳ Обязательные проверки не завершены успешно'}.`,
-      ...(readiness.checkItems || []).map(item => `  - ${item.done ? '✅' : '⏳'} ${plain(item.name)}: ${plain(results[item.result] || item.result || (item.done ? 'успешно' : 'ожидается'))}.`),
+      ...(readiness.checkItems || []).map(item => `  - ${item.done ? '✅' : failedItem(item) ? '❌' : '⏳'} ${plain(item.name)}: ${plain(results[item.result] || item.result || (item.done ? 'успешно' : 'ожидается'))}.`),
       `- ${readiness.codeRabbitAbsent ? 'ℹ️ CodeRabbit не появился за 10 минут: ожидание пропущено' :
         readiness.rateLimited ? '✅ CodeRabbit сообщил о лимите: исключение разрешено' :
           readiness.codeRabbitReady ? '✅ CodeRabbit закончил ревью' : '⏳ Ожидается CodeRabbit'}.`, '');

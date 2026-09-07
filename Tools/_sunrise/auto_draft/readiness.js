@@ -1,4 +1,3 @@
-// Проверки читаются штатным токеном Actions; приложению не нужны дополнительные права.
 module.exports = async ({ github, commentsGithub = github, owner, repo, pullRequest, rulesCache,
   reportAppSlug = 'github-actions', now = Date.now() }) => {
   const checks = [];
